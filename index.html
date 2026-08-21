@@ -27,6 +27,33 @@
 
   *{box-sizing:border-box;}
 
+  .ambient-bg{
+    position:fixed; inset:0;
+    z-index:-1;
+    overflow:hidden;
+    pointer-events:none;
+  }
+  .ambient-tint{
+    position:absolute; inset:0;
+    transition: background 3s ease;
+  }
+  .ambient-orb{
+    position:absolute;
+    width: 130px; height:130px;
+    border-radius:50%;
+    filter: blur(44px);
+    opacity:0.16;
+    transition: background 3s ease;
+    animation: driftOrb 26s ease-in-out infinite;
+  }
+  .ambient-orb:nth-child(2){ top:8%; left:12%; }
+  .ambient-orb:nth-child(3){ top:55%; left:75%; animation-duration:32s; animation-delay:-9s; }
+  .ambient-orb:nth-child(4){ top:80%; left:18%; animation-duration:29s; animation-delay:-15s; }
+  @keyframes driftOrb{
+    0%,100%{ transform: translate(0,0) scale(1); }
+    50%{ transform: translate(30px,-36px) scale(1.15); }
+  }
+
   body{
     margin:0;
     font-family:'Nunito', sans-serif;
@@ -400,8 +427,21 @@
     position:relative;
     animation: cardIn 0.5s cubic-bezier(.2,1.6,.4,1) both;
     cursor: pointer;
-    transition: transform 0.12s ease;
+    transition: transform 0.15s ease;
+    transform-style: preserve-3d;
+    will-change: transform;
+    overflow: hidden;
   }
+  .card::before{
+    content:'';
+    position:absolute; inset:0;
+    background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,0.35), transparent 55%);
+    opacity:0;
+    transition: opacity 0.2s ease;
+    pointer-events:none;
+    z-index:2;
+  }
+  .card.tilting::before{ opacity:1; }
   .card:hover{ transform: translateY(-3px); }
   .card.rarity-uncommon{ border-color: var(--uncommon); }
   .card.rarity-rare{ border-color: var(--rare); }
@@ -585,6 +625,70 @@
     100%{ opacity:1; transform: scale(1) rotateY(0deg); }
   }
 
+  /* --- Particules + flash à la révélation --- */
+  .reveal-particle{
+    position:absolute;
+    top:50%; left:50%;
+    width:7px; height:7px;
+    border-radius:50%;
+    transform: translate(-50%,-50%);
+    animation: particleBurst 0.85s ease-out forwards;
+    pointer-events:none;
+    z-index:5;
+  }
+  @keyframes particleBurst{
+    0%{ transform: translate(-50%,-50%) rotate(var(--angle)) translateX(0) scale(1); opacity:1; }
+    100%{ transform: translate(-50%,-50%) rotate(var(--angle)) translateX(var(--dist)) scale(0.2); opacity:0; }
+  }
+  .reveal-flash{
+    position:fixed; inset:0;
+    pointer-events:none;
+    z-index:1001;
+    animation: flashFade 0.55s ease-out forwards;
+  }
+  @keyframes flashFade{
+    0%{ opacity:0; }
+    18%{ opacity:0.5; }
+    100%{ opacity:0; }
+  }
+
+  /* --- Toast de succès --- */
+  .achievement-toast{
+    position:fixed;
+    top: -100px;
+    left:50%;
+    transform: translateX(-50%);
+    z-index: 1200;
+    background: var(--bg-panel);
+    border: 2px solid var(--gold);
+    border-radius: 14px;
+    padding: 12px 18px;
+    display:flex;
+    align-items:center;
+    gap: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    transition: top 0.4s cubic-bezier(.2,1.6,.4,1);
+    max-width: 90vw;
+  }
+  .achievement-toast.visible{ top: 16px; }
+  .toast-icon{ font-size: 1.6rem; }
+  .toast-title{ font-family:'Baloo 2', sans-serif; font-weight:700; font-size:0.72rem; color: var(--gold); text-transform:uppercase; letter-spacing:0.5px; }
+  .toast-name{ font-family:'Baloo 2', sans-serif; font-weight:700; font-size:0.9rem; color: var(--paper); }
+
+  /* --- Confettis (collection complète) --- */
+  .confetti-piece{
+    position:fixed;
+    top:-20px;
+    width:8px; height:14px;
+    z-index:1150;
+    pointer-events:none;
+    animation: confettiFall linear forwards;
+  }
+  @keyframes confettiFall{
+    0%{ transform: translateY(0) rotate(0deg); opacity:1; }
+    100%{ transform: translateY(110vh) rotate(720deg); opacity:0.3; }
+  }
+
   /* --- Teaser avant la révélation (silhouette) --- */
   .teaser-shape{
     width: 140px; height: 196px;
@@ -703,6 +807,10 @@
     .capture-reveal-backdrop{ animation: none; }
     .capture-reveal-card.is-shiny::after{ animation: none; }
     .teaser-shape{ animation: none; }
+    .reveal-particle, .reveal-flash{ display:none; }
+    .achievement-toast{ transition: none; }
+    .confetti-piece{ display:none; }
+    .ambient-bg{ display:none; }
   }
 
   @media (max-width:480px){
@@ -716,12 +824,19 @@
 </head>
 <body>
 
+  <div class="ambient-bg" id="ambientBg">
+    <div class="ambient-tint" id="ambientTint"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+  </div>
+
   <div class="top-row">
     <h1>PokéWalk Collector</h1>
     <div class="top-controls">
       <div class="save-indicator" id="saveIndicator">💾 Sauvegardé</div>
-      <div class="treasure-badge" id="treasureBadge">🐷 0,00 €</div>
-      <div class="coin-badge" id="coinBadge">🪙 0</div>
+      <div class="treasure-badge" id="treasureBadge">🐷 <span id="treasureBadgeValue">0,00 €</span></div>
+      <div class="coin-badge" id="coinBadge">🪙 <span id="coinBadgeValue">0</span></div>
       <button class="mute-btn" onclick="toggleMute()" id="muteBtn" title="Son">🔊</button>
     </div>
   </div>
@@ -831,7 +946,7 @@
   <!-- Onglet Stats -->
   <div class="tab-panel" id="panel-stats">
     <div class="stat-card">
-      <div class="treasure-line" id="treasureLine">0,00 €</div>
+      <div class="treasure-line" id="treasureLine"><span id="treasureLineValue">0,00 €</span></div>
       <div class="treasure-sub">valeur estimée de ma collection (Cardmarket, France)</div>
     </div>
 
@@ -882,6 +997,7 @@
   let coinFraction = 0;       // accumulateur pour convertir les mètres en pièces sans arrondi perdu
   let totalCoinsEarned = 0;   // cumul historique (ne baisse jamais, même en dépensant)
   let totalConverted = 0;     // nombre de doublons convertis en pièces
+  let seenAchievements = [];  // noms des succès déjà notifiés (pour ne pas re-notifier)
 
   const METERS_PER_COIN = 25;      // 1 pièce tous les 25 m marchés
   const STREAK_COIN_BONUS = 10;    // bonus quand la série de jours augmente
@@ -927,6 +1043,39 @@
     return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
   }
 
+  // ---------- Compteurs animés ----------
+  const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function animateNumber(el, to, formatFn){
+    if(!el) return;
+    formatFn = formatFn || (v => String(Math.round(v)));
+    const from = (el._animCurrent !== undefined) ? el._animCurrent : to;
+
+    if(prefersReducedMotion || from === to){
+      el.textContent = formatFn(to);
+      el._animCurrent = to;
+      return;
+    }
+
+    if(el._animFrame) cancelAnimationFrame(el._animFrame);
+    const duration = 500;
+    const start = performance.now();
+
+    function tick(now){
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const val = from + (to - from) * eased;
+      el.textContent = formatFn(val);
+      if(t < 1){
+        el._animFrame = requestAnimationFrame(tick);
+      }else{
+        el.textContent = formatFn(to);
+        el._animCurrent = to;
+      }
+    }
+    el._animFrame = requestAnimationFrame(tick);
+  }
+
   // valeur d'une carte en euros (Cardmarket), avec prix "holo" pour les shiny si disponible
   function cardUnitValue(card, isShiny){
     const cm = card && card.pricing && card.pricing.cardmarket;
@@ -947,7 +1096,7 @@
   // ---------- Sauvegarde ----------
   let saveIndicatorTimeout = null;
   function save(){
-    const payload = { distance, collection, dailyHistory, streak, lastWalkDateStr, muted, huntSetId, coins, coinFraction, totalCoinsEarned, totalConverted };
+    const payload = { distance, collection, dailyHistory, streak, lastWalkDateStr, muted, huntSetId, coins, coinFraction, totalCoinsEarned, totalConverted, seenAchievements };
     try{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       flashSaveIndicator();
@@ -978,11 +1127,12 @@
       coinFraction = p.coinFraction || 0;
       totalCoinsEarned = p.totalCoinsEarned || 0;
       totalConverted = p.totalConverted || 0;
+      seenAchievements = p.seenAchievements || [];
     }catch(e){ /* sauvegarde corrompue */ }
   }
 
   function exportSave(){
-    const payload = { distance, collection, dailyHistory, streak, lastWalkDateStr, muted, huntSetId, coins, coinFraction, totalCoinsEarned, totalConverted, exportedAt: new Date().toISOString() };
+    const payload = { distance, collection, dailyHistory, streak, lastWalkDateStr, muted, huntSetId, coins, coinFraction, totalCoinsEarned, totalConverted, seenAchievements, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1012,6 +1162,7 @@
         coinFraction = p.coinFraction || 0;
         totalCoinsEarned = p.totalCoinsEarned || 0;
         totalConverted = p.totalConverted || 0;
+        seenAchievements = p.seenAchievements || [];
         save();
         renderAll();
         setEncounter('Sauvegarde importée avec succès !');
@@ -1023,11 +1174,11 @@
 
   // ---------- Rendu ----------
   function renderStats(){
-    els.distance.innerText = distance;
+    animateNumber(els.distance, distance);
     const ids = Object.keys(collection);
     const totalCards = ids.reduce((sum, id) => sum + collection[id].count, 0);
-    els.uniqueCount.innerText = ids.length;
-    els.totalCount.innerText = totalCards;
+    animateNumber(els.uniqueCount, ids.length);
+    animateNumber(els.totalCount, totalCards);
 
     const progressInCycle = distance % STEP_TO_CAPTURE;
     const pct = (progressInCycle / STEP_TO_CAPTURE) * 100;
@@ -1059,16 +1210,15 @@
 
   function renderTreasure(){
     const { total, unpriced } = computeTreasure();
-    const txt = fmtEUR(total);
-    els.treasureBadge.innerText = `🐷 ${txt}`;
-    els.treasureLine.innerText = txt;
+    animateNumber(document.getElementById('treasureBadgeValue'), total, fmtEUR);
+    animateNumber(document.getElementById('treasureLineValue'), total, fmtEUR);
     document.querySelector('.treasure-sub').innerText = unpriced > 0
       ? `valeur estimée (Cardmarket France) · ${unpriced} carte${unpriced > 1 ? 's' : ''} sans prix connu`
       : `valeur estimée de ma collection (Cardmarket, France)`;
   }
 
   function renderCoins(){
-    els.coinBadge.innerText = `🪙 ${coins}`;
+    animateNumber(document.getElementById('coinBadgeValue'), coins);
   }
 
   const TIER_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
@@ -1125,7 +1275,30 @@
         <div class="card-price">${fmtEUR(value)}</div>
         ${canConvert ? `<button class="convert-btn" onclick="event.stopPropagation(); convertDuplicate('${id}')">🪙 Convertir un double (+${reward})</button>` : ''}
       `;
+      attachTilt(div);
       els.collection.appendChild(div);
+    });
+  }
+
+  // Effet holographique : la carte penche en suivant le curseur (souris uniquement,
+  // pour ne pas gêner le défilement tactile sur mobile).
+  function attachTilt(el){
+    if(prefersReducedMotion) return;
+    el.addEventListener('pointermove', (e) => {
+      if(e.pointerType !== 'mouse') return;
+      const rect = el.getBoundingClientRect();
+      const px = (e.clientX - rect.left) / rect.width;
+      const py = (e.clientY - rect.top) / rect.height;
+      const rotateY = (px - 0.5) * 14;
+      const rotateX = (0.5 - py) * 14;
+      el.style.transform = `translateY(-3px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+      el.style.setProperty('--mx', (px * 100) + '%');
+      el.style.setProperty('--my', (py * 100) + '%');
+      el.classList.add('tilting');
+    });
+    el.addEventListener('pointerleave', () => {
+      el.style.transform = '';
+      el.classList.remove('tilting');
     });
   }
 
@@ -1238,6 +1411,72 @@
     }).join('');
   }
 
+  // Vérifie si de nouveaux succès viennent d'être débloqués et notifie en direct,
+  // même si le joueur n'est pas sur l'onglet Succès au moment où ça arrive.
+  function checkAchievementUnlocks(){
+    const list = getAchievements();
+    let changed = false;
+    list.forEach(a => {
+      if(a.current >= a.target && !seenAchievements.includes(a.name)){
+        seenAchievements.push(a.name);
+        showToast(a.icon, 'Succès débloqué !', a.name);
+        changed = true;
+      }
+    });
+    if(changed) save();
+  }
+
+  // ---------- Toast ----------
+  let toastQueue = [];
+  let toastBusy = false;
+  function showToast(icon, title, name){
+    toastQueue.push({ icon, title, name });
+    processToastQueue();
+  }
+  function processToastQueue(){
+    if(toastBusy || toastQueue.length === 0) return;
+    toastBusy = true;
+    const t = toastQueue.shift();
+    const div = document.createElement('div');
+    div.className = 'achievement-toast';
+    div.innerHTML = `<div class="toast-icon">${t.icon}</div><div><div class="toast-title">${t.title}</div><div class="toast-name">${t.name}</div></div>`;
+    document.body.appendChild(div);
+    requestAnimationFrame(() => div.classList.add('visible'));
+    setTimeout(() => {
+      div.classList.remove('visible');
+      setTimeout(() => { div.remove(); toastBusy = false; processToastQueue(); }, 450);
+    }, 2600);
+  }
+
+  // ---------- Confettis (collection complète) ----------
+  function spawnConfetti(){
+    if(prefersReducedMotion) return;
+    const colors = ['#d9a441', '#8b5cc9', '#4a90a4', '#b5432f', '#e0b23c', '#7fa78d'];
+    for(let i = 0; i < 60; i++){
+      const c = document.createElement('div');
+      c.className = 'confetti-piece';
+      c.style.left = (Math.random() * 100) + 'vw';
+      c.style.background = colors[Math.floor(Math.random() * colors.length)];
+      const duration = 2.2 + Math.random() * 1.4;
+      c.style.animationDuration = duration + 's';
+      c.style.animationDelay = (Math.random() * 0.4) + 's';
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), (duration + 0.6) * 1000);
+    }
+  }
+
+  function isSetComplete(setId){
+    const s = allSets.find(x => x.id === setId);
+    if(!s) return false;
+    const total = s.cardCount.total || 0;
+    return total > 0 && ownedCountForSet(setId) >= total;
+  }
+
+  function celebrateSetComplete(setName){
+    spawnConfetti();
+    showToast('🏆', 'Collection complétée !', setName);
+  }
+
   // ---------- Son ----------
   function toggleMute(){ muted = !muted; els.muteBtn.innerText = muted ? '🔇' : '🔊'; save(); }
   function playTone(freq, duration, delay){
@@ -1284,6 +1523,38 @@
   function waitMs(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
 
   // ---------- Écran de révélation de capture ----------
+  const TIER_PARTICLE_COLOR = { rare: '#b5432f', epic: '#8b5cc9', legendary: '#e0b23c' };
+
+  function spawnParticles(container, tier, isShiny){
+    if(prefersReducedMotion) return;
+    const counts = { common: 0, uncommon: 0, rare: 8, epic: 16, legendary: 26 };
+    const count = isShiny ? Math.max(counts[tier] || 0, 14) : (counts[tier] || 0);
+    if(count === 0) return;
+    const color = isShiny ? '#e0a8ff' : (TIER_PARTICLE_COLOR[tier] || '#d9a441');
+    for(let i = 0; i < count; i++){
+      const p = document.createElement('div');
+      p.className = 'reveal-particle';
+      const angle = Math.random() * 360;
+      const dist = 60 + Math.random() * 90;
+      p.style.setProperty('--angle', angle + 'deg');
+      p.style.setProperty('--dist', dist + 'px');
+      p.style.background = color;
+      p.style.animationDelay = (Math.random() * 0.15) + 's';
+      container.appendChild(p);
+    }
+  }
+
+  function flashScreen(tier, isShiny){
+    if(prefersReducedMotion) return;
+    if(!isShiny && tier !== 'epic' && tier !== 'legendary') return;
+    const color = isShiny ? 'rgba(224,168,255,0.5)' : (tier === 'legendary' ? 'rgba(224,178,60,0.5)' : 'rgba(139,92,201,0.5)');
+    const flash = document.createElement('div');
+    flash.className = 'reveal-flash';
+    flash.style.background = `radial-gradient(circle at 50% 40%, ${color}, transparent 70%)`;
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 600);
+  }
+
   function showCaptureReveal(card, tier, isShiny, isNew, countAfter){
     const value = cardUnitValue(card, isShiny);
     els.captureReveal.innerHTML = `
@@ -1301,6 +1572,9 @@
       </div>
     `;
     els.captureReveal.classList.add('visible');
+    const cardEl = els.captureReveal.querySelector('.capture-reveal-card');
+    spawnParticles(cardEl, tier, isShiny);
+    flashScreen(tier, isShiny);
   }
 
   function closeCaptureReveal(){
@@ -1449,12 +1723,14 @@
     totalConverted += 1;
     renderCollection(); renderCoins(); renderRarityBreakdown(); renderTreasure(); save();
     setEncounter(`🪙 Double converti : +${reward} pièces !`);
+    checkAchievementUnlocks();
   }
 
   function simulateWalk(){
     distance += 100;
     recordWalk(100);
     renderStats(); renderStreak(); renderCoins(); save();
+    checkAchievementUnlocks();
     if(distance % STEP_TO_CAPTURE === 0) fetchRandomCard();
   }
 
@@ -1486,6 +1762,7 @@
       const isShiny = Math.random() < SHINY_CHANCE;
       const alreadyOwned = !!collection[card.id];
       const tier = rarityTier(card.rarity);
+      const wasSetComplete = card.set && card.set.id ? isSetComplete(card.set.id) : false;
 
       setEncounter('');
       showTeaser(tier);
@@ -1495,6 +1772,10 @@
       playCaptureSound(tier, isShiny);
       vibrateForCapture(tier, isShiny);
       showCaptureReveal(card, tier, isShiny, !alreadyOwned, collection[card.id].count);
+
+      if(card.set && card.set.id && !wasSetComplete && isSetComplete(card.set.id)){
+        setTimeout(() => celebrateSetComplete(card.set.name), 900);
+      }
     }catch(error){
       console.error('Erreur API :', error);
       setEncounter(`Oups, la capture a échoué. <a onclick="fetchRandomCard(true)" style="color:inherit;text-decoration:underline;cursor:pointer;">Réessayer</a>`, true);
@@ -1511,6 +1792,7 @@
       collection[card.id] = { card, count: 1, shinyCount: isShiny ? 1 : 0, firstCapturedAt: Date.now() };
     }
     renderCollection(); renderStats(); renderRarityBreakdown(); renderTreasure(); save();
+    checkAchievementUnlocks();
   }
 
   // ---------- Pokédex ----------
@@ -1598,12 +1880,18 @@
         return;
       }
 
+      const wasSetComplete = card.set && card.set.id ? isSetComplete(card.set.id) : false;
+
       coins -= price;
       addCardToCollection(card, false);
       renderCoins();
       els.dexShopMsg.className = 'dex-shop-msg';
       els.dexShopMsg.innerText = `✅ ${card.name} acheté pour ${price} pièces !`;
       showCaptureReveal(card, tier, false, true, collection[card.id].count);
+
+      if(card.set && card.set.id && !wasSetComplete && isSetComplete(card.set.id)){
+        setTimeout(() => celebrateSetComplete(card.set.name), 900);
+      }
 
       if(currentDexSetId) openDexDetail(currentDexSetId);
     }catch(e){
@@ -1625,7 +1913,7 @@
   function resetProgress(){
     if(!confirm('Effacer toute votre progression et votre collection ?')) return;
     distance = 0; collection = {}; dailyHistory = {}; streak = 0; lastWalkDateStr = null;
-    coins = 0; coinFraction = 0; totalCoinsEarned = 0; totalConverted = 0;
+    coins = 0; coinFraction = 0; totalCoinsEarned = 0; totalConverted = 0; seenAchievements = [];
     save(); renderAll(); renderAchievements(); setEncounter('');
   }
 
@@ -1702,6 +1990,7 @@
         distance += Math.round(d);
         recordWalk(Math.round(d));
         renderStats(); renderStreak(); renderCoins(); save();
+        checkAchievementUnlocks();
         if(Math.floor(distance / STEP_TO_CAPTURE) > before) fetchRandomCard();
       }
       lastGeoCoords = { latitude, longitude };
@@ -1721,11 +2010,28 @@
   }
 
 
+  // ---------- Ambiance : dégradé selon l'heure réelle ----------
+  function applyTimeOfDayTheme(){
+    const tintEl = document.getElementById('ambientTint');
+    if(!tintEl) return;
+    const h = new Date().getHours();
+    let tintColor, orbColor;
+    if(h >= 5 && h < 8){ tintColor = 'rgba(255,190,140,0.4)'; orbColor = '#ffb347'; }       // aube
+    else if(h >= 8 && h < 17){ tintColor = 'rgba(180,255,210,0.28)'; orbColor = '#8fe0ac'; } // jour
+    else if(h >= 17 && h < 20){ tintColor = 'rgba(255,140,90,0.4)'; orbColor = '#ff9457'; }  // crépuscule
+    else{ tintColor = 'rgba(100,120,255,0.3)'; orbColor = '#8d9bff'; }                       // nuit
+
+    tintEl.style.background = `radial-gradient(circle at 30% 20%, ${tintColor}, transparent 60%)`;
+    document.querySelectorAll('.ambient-orb').forEach(o => { o.style.background = orbColor; });
+  }
+
   // ---------- Init ----------
   cacheEls();
   load();
   els.muteBtn.innerText = muted ? '🔇' : '🔊';
   renderAll();
+  applyTimeOfDayTheme();
+  setInterval(applyTimeOfDayTheme, 10 * 60 * 1000);
   loadSets().then(() => { checkForNewSets(); renderDexOverview(); });
 </script>
 </body>
