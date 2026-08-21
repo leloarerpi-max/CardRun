@@ -313,6 +313,47 @@
     opacity:0.75;
     font-weight:700;
   }
+
+  .combobox{
+    position:relative;
+    width: 100%;
+    max-width: 280px;
+  }
+  .combobox input{
+    width:100%;
+    font-family:'Nunito', sans-serif;
+    font-weight:700;
+    font-size:0.85rem;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(244,236,216,0.2);
+    background: var(--bg-panel);
+    color: var(--paper);
+  }
+  .combobox input::placeholder{ color: var(--paper-dim); opacity:0.65; }
+  .combobox-dropdown{
+    position:fixed;
+    max-height: 260px;
+    overflow-y:auto;
+    background: var(--bg-panel);
+    border: 1px solid rgba(244,236,216,0.25);
+    border-radius: 10px;
+    z-index: 1300;
+    display:none;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+    -webkit-overflow-scrolling: touch;
+  }
+  .combobox-dropdown.visible{ display:block; }
+  .combobox-item{
+    padding: 9px 12px;
+    font-size: 0.85rem;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .combobox-item:hover, .combobox-item:active{ background: rgba(217,164,65,0.18); }
+  .combobox-item.special{ color: var(--gold); border-bottom: 1px solid rgba(244,236,216,0.1); }
+  .combobox-empty{ padding: 9px 12px; font-size:0.8rem; opacity:0.6; }
+
   select{
     font-family:'Nunito', sans-serif;
     font-weight:700;
@@ -564,6 +605,23 @@
   .dex-shop-msg.error{ color:#e0776a; }
 
   .dex-toolbar{ max-width: 640px; margin: 0 auto 16px; display:flex; align-items:center; justify-content:center; gap:10px; }
+
+  .dex-search-row{
+    max-width: 640px;
+    margin: 0 auto 16px;
+  }
+  .dex-search-row input{
+    width:100%;
+    font-family:'Nunito', sans-serif;
+    font-weight:700;
+    font-size:0.9rem;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(244,236,216,0.2);
+    background: var(--bg-panel);
+    color: var(--paper);
+  }
+  .dex-search-row input::placeholder{ color: var(--paper-dim); opacity:0.6; }
 
   .set-overview-grid{
     max-width: 980px;
@@ -938,10 +996,12 @@
     </div>
 
     <div class="set-select-row">
-      <label for="huntSetSelect">Chasser dans :</label>
-      <select id="huntSetSelect" onchange="onHuntSetChange()">
-        <option value="all">Toutes les collections (aléatoire)</option>
-      </select>
+      <label for="huntSetSearch">Chasser dans :</label>
+      <div class="combobox" id="huntCombobox">
+        <input type="text" id="huntSetSearch" placeholder="Toutes les collections (aléatoire)"
+          autocomplete="off" oninput="renderHuntDropdown(this.value)" onfocus="renderHuntDropdown(this.value)">
+        <div class="combobox-dropdown" id="huntSetDropdown"></div>
+      </div>
     </div>
 
     <button onclick="simulateWalk()" id="walkBtn">Marcher (+100 m)</button>
@@ -994,6 +1054,9 @@
     <div class="subpanel" id="subpanel-dex">
       <!-- Vue d'ensemble : toutes les collections, vides ou en cours -->
       <div id="dexOverviewWrap">
+        <div class="dex-search-row">
+          <input type="text" id="dexSearchInput" placeholder="🔍 Rechercher une collection…" autocomplete="off" oninput="renderDexOverview()">
+        </div>
         <p class="dex-hint" id="dexOverviewHint">Chargement des collections…</p>
         <div class="set-overview-grid" id="dexOverviewGrid"></div>
       </div>
@@ -1081,7 +1144,7 @@
   function cacheEls(){
     ['distance','uniqueCount','totalCount','trailFill','trailWalker','trailRemaining',
      'encounter','collection','emptyState','walkBtn','geoToggle','setBanner','setBannerText',
-     'muteBtn','treasureBadge','coinBadge','saveIndicator','huntSetSelect','dexOverviewGrid','dexOverviewHint','dexProgress','dexShopMsg','dexGrid',
+     'muteBtn','treasureBadge','coinBadge','saveIndicator','dexOverviewGrid','dexOverviewHint','dexProgress','dexShopMsg','dexGrid',
      'streakLine','barChart','rarityBreakdown','treasureLine','captureReveal','detailModal',
      'filterSelect','sortSelect','achievementsGrid'].forEach(id => { els[id] = document.getElementById(id); });
   }
@@ -1726,12 +1789,75 @@
   }
 
   function populateHuntSelect(){
-    const optionsHtml = allSets.map(s => `<option value="${s.id}">${s.name} (${s.cardCount.total})</option>`).join('');
-    els.huntSetSelect.innerHTML = `<option value="all">Toutes les collections (aléatoire)</option>` + optionsHtml;
-    els.huntSetSelect.value = huntSetId;
+    // Affiche le nom de la collection déjà choisie (persistée) dans le champ de recherche
+    const input = document.getElementById('huntSetSearch');
+    if(huntSetId && huntSetId !== 'all'){
+      const s = allSets.find(x => x.id === huntSetId);
+      if(s) input.value = s.name;
+    }
   }
 
-  function onHuntSetChange(){ huntSetId = els.huntSetSelect.value; save(); }
+  function positionHuntDropdown(){
+    const input = document.getElementById('huntSetSearch');
+    const dropdown = document.getElementById('huntSetDropdown');
+    // Détache la liste du flux normal et l'attache directement au <body> : ça garantit
+    // qu'aucun conteneur parent (mise en page flex, contexte d'empilement CSS, etc.)
+    // ne puisse la cacher ou la couper visuellement, quel que soit l'appareil.
+    if(dropdown.parentElement !== document.body){
+      document.body.appendChild(dropdown);
+    }
+    const rect = input.getBoundingClientRect();
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.top = (rect.bottom + 4) + 'px';
+    dropdown.style.width = rect.width + 'px';
+  }
+
+  function renderHuntDropdown(query){
+    query = (query || '').trim().toLowerCase();
+    const items = [{ id: 'all', name: 'Toutes les collections (aléatoire)', special: true }, ...allSets];
+    const filtered = query ? items.filter(i => i.name.toLowerCase().includes(query)) : items;
+    const dropdown = document.getElementById('huntSetDropdown');
+    if(filtered.length === 0){
+      dropdown.innerHTML = '<div class="combobox-empty">Aucune collection trouvée</div>';
+    }else{
+      dropdown.innerHTML = filtered.slice(0, 60).map(i =>
+        `<div class="combobox-item${i.special ? ' special' : ''}" onclick="selectHuntSet('${i.id}')">${i.name}${i.cardCount ? ` (${i.cardCount.total})` : ''}</div>`
+      ).join('');
+    }
+    positionHuntDropdown();
+    dropdown.classList.add('visible');
+  }
+
+  function selectHuntSet(id){
+    huntSetId = id;
+    const input = document.getElementById('huntSetSearch');
+    if(id === 'all'){
+      input.value = '';
+    }else{
+      const s = allSets.find(x => x.id === id);
+      input.value = s ? s.name : '';
+    }
+    document.getElementById('huntSetDropdown').classList.remove('visible');
+    save();
+  }
+
+  document.addEventListener('click', (e) => {
+    const combo = document.getElementById('huntCombobox');
+    const dropdown = document.getElementById('huntSetDropdown');
+    if(combo && dropdown && !combo.contains(e.target) && !dropdown.contains(e.target)){
+      dropdown.classList.remove('visible');
+    }
+  });
+  window.addEventListener('scroll', (e) => {
+    const dropdown = document.getElementById('huntSetDropdown');
+    if(dropdown && dropdown.classList.contains('visible') && !dropdown.contains(e.target)){
+      dropdown.classList.remove('visible');
+    }
+  }, true);
+  window.addEventListener('resize', () => {
+    const dropdown = document.getElementById('huntSetDropdown');
+    if(dropdown && dropdown.classList.contains('visible')) positionHuntDropdown();
+  });
 
   async function getSetCardList(setId){
     if(setCardListCache[setId]) return setCardListCache[setId];
@@ -1924,8 +2050,18 @@
       els.dexOverviewGrid.innerHTML = '';
       return;
     }
+    const searchInput = document.getElementById('dexSearchInput');
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const filteredSets = query ? allSets.filter(s => s.name.toLowerCase().includes(query)) : allSets;
+
+    if(filteredSets.length === 0){
+      els.dexOverviewHint.style.display = 'block';
+      els.dexOverviewHint.innerText = `Aucune collection ne correspond à "${searchInput.value}".`;
+      els.dexOverviewGrid.innerHTML = '';
+      return;
+    }
     els.dexOverviewHint.style.display = 'none';
-    els.dexOverviewGrid.innerHTML = allSets.map(s => {
+    els.dexOverviewGrid.innerHTML = filteredSets.map(s => {
       const owned = ownedCountForSet(s.id);
       const total = s.cardCount.total || 0;
       const pct = total > 0 ? Math.round((owned / total) * 100) : 0;
