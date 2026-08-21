@@ -374,6 +374,63 @@
   .geoline{ text-align:center; margin: -10px auto 20px; font-size:0.82rem; }
   .geoline a{ color: var(--gold); cursor:pointer; text-decoration: underline; }
 
+  .manual-distance-row{
+    max-width: 400px;
+    margin: 0 auto 24px;
+    text-align:center;
+  }
+  .manual-distance-label{
+    display:block;
+    font-size: 0.78rem;
+    color: var(--paper-dim);
+    opacity:0.7;
+    margin-bottom: 8px;
+  }
+  .manual-distance-input-group{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap: 8px;
+  }
+  .manual-distance-input-group input{
+    font-family:'Nunito', sans-serif;
+    font-weight:700;
+    font-size: 0.95rem;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(244,236,216,0.2);
+    background: var(--bg-panel);
+    color: var(--paper);
+    width: 100px;
+    text-align:center;
+  }
+  .manual-distance-input-group input::-webkit-outer-spin-button,
+  .manual-distance-input-group input::-webkit-inner-spin-button{
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .manual-distance-unit{
+    font-size: 0.85rem;
+    color: var(--paper-dim);
+    opacity:0.8;
+    font-weight:700;
+  }
+  .secondary-btn{
+    display:inline-block;
+    margin:0;
+    padding: 9px 18px;
+    font-family:'Baloo 2', sans-serif;
+    font-size: 0.85rem;
+    font-weight:700;
+    cursor:pointer;
+    background: rgba(217,164,65,0.15);
+    color: var(--gold);
+    border: 1px solid rgba(217,164,65,0.4);
+    border-radius: 10px;
+    box-shadow: none;
+  }
+  .secondary-btn:hover{ background: rgba(217,164,65,0.28); }
+
   .encounter{
     max-width: 420px;
     margin: 0 auto 8px;
@@ -889,6 +946,16 @@
 
     <button onclick="simulateWalk()" id="walkBtn">Marcher (+100 m)</button>
     <div class="geoline"><a onclick="toggleGeoTracking()" id="geoToggle">Suivre ma marche réelle (GPS)</a></div>
+
+    <div class="manual-distance-row">
+      <span class="manual-distance-label">Pas de GPS ? Ajoute ta distance :</span>
+      <div class="manual-distance-input-group">
+        <input type="number" id="manualKmInput" placeholder="ex : 2.5" step="0.01" min="0" inputmode="decimal"
+          onkeypress="if(event.key==='Enter'){ submitManualDistance(); }">
+        <span class="manual-distance-unit">km</span>
+        <button class="secondary-btn" onclick="submitManualDistance()">Ajouter</button>
+      </div>
+    </div>
 
     <div class="encounter" id="encounter"></div>
   </div>
@@ -1577,9 +1644,18 @@
     flashScreen(tier, isShiny);
   }
 
+  let captureRevealResolve = null;
   function closeCaptureReveal(){
     els.captureReveal.classList.remove('visible');
     els.captureReveal.innerHTML = '';
+    if(captureRevealResolve){
+      const resolve = captureRevealResolve;
+      captureRevealResolve = null;
+      resolve();
+    }
+  }
+  function waitForRevealClose(){
+    return new Promise(resolve => { captureRevealResolve = resolve; });
   }
 
   // ---------- Fiche détaillée d'une carte ----------
@@ -1734,6 +1810,45 @@
     if(distance % STEP_TO_CAPTURE === 0) fetchRandomCard();
   }
 
+  // ---------- Distance ajoutée manuellement (sans GPS) ----------
+  function submitManualDistance(){
+    const input = document.getElementById('manualKmInput');
+    const km = parseFloat(input.value);
+    if(!km || km <= 0 || !Number.isFinite(km)){
+      setEncounter('Entre une distance valide en kilomètres (ex : 2.5).', true);
+      return;
+    }
+    if(km > 200){
+      setEncounter("Cette distance semble énorme pour une seule saisie — vérifie le chiffre entré.", true);
+      return;
+    }
+    input.value = '';
+    addManualDistance(Math.round(km * 1000));
+  }
+
+  async function addManualDistance(meters){
+    if(!meters || meters <= 0) return;
+    const beforeThreshold = Math.floor(distance / STEP_TO_CAPTURE);
+    distance += meters;
+    recordWalk(meters);
+    renderStats(); renderStreak(); renderCoins(); save();
+    checkAchievementUnlocks();
+
+    const afterThreshold = Math.floor(distance / STEP_TO_CAPTURE);
+    const capturesToTrigger = afterThreshold - beforeThreshold;
+    if(capturesToTrigger <= 0) return;
+
+    setEncounter(capturesToTrigger > 1
+      ? `+${(meters / 1000).toLocaleString('fr-FR')} km ajoutés — ${capturesToTrigger} captures en approche !`
+      : '');
+
+    // les captures se déclenchent l'une après l'autre : chaque fetchRandomCard()
+    // attend que le joueur ferme l'écran de révélation avant de passer à la suivante.
+    for(let i = 0; i < capturesToTrigger; i++){
+      await fetchRandomCard();
+    }
+  }
+
   function pickWeightedRandomSet(){
     const total = allSets.reduce((sum, s) => sum + (s.cardCount.total || 0), 0);
     let r = Math.random() * total;
@@ -1776,6 +1891,8 @@
       if(card.set && card.set.id && !wasSetComplete && isSetComplete(card.set.id)){
         setTimeout(() => celebrateSetComplete(card.set.name), 900);
       }
+
+      await waitForRevealClose();
     }catch(error){
       console.error('Erreur API :', error);
       setEncounter(`Oups, la capture a échoué. <a onclick="fetchRandomCard(true)" style="color:inherit;text-decoration:underline;cursor:pointer;">Réessayer</a>`, true);
