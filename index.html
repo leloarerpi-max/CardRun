@@ -332,15 +332,14 @@
   }
   .combobox input::placeholder{ color: var(--paper-dim); opacity:0.65; }
   .combobox-dropdown{
-    position:fixed;
+    display:none;
+    margin-top: 6px;
     max-height: 260px;
     overflow-y:auto;
     background: var(--bg-panel);
     border: 1px solid rgba(244,236,216,0.25);
     border-radius: 10px;
-    z-index: 1300;
-    display:none;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
     -webkit-overflow-scrolling: touch;
   }
   .combobox-dropdown.visible{ display:block; }
@@ -1685,6 +1684,8 @@
     setTimeout(() => flash.remove(), 600);
   }
 
+  let captureRevealAutoCloseTimer = null;
+
   function showCaptureReveal(card, tier, isShiny, isNew, countAfter){
     const value = cardUnitValue(card, isShiny);
     els.captureReveal.innerHTML = `
@@ -1705,10 +1706,17 @@
     const cardEl = els.captureReveal.querySelector('.capture-reveal-card');
     spawnParticles(cardEl, tier, isShiny);
     flashScreen(tier, isShiny);
+
+    if(captureRevealAutoCloseTimer) clearTimeout(captureRevealAutoCloseTimer);
+    captureRevealAutoCloseTimer = setTimeout(() => closeCaptureReveal(), 8000);
   }
 
   let captureRevealResolve = null;
   function closeCaptureReveal(){
+    if(captureRevealAutoCloseTimer){
+      clearTimeout(captureRevealAutoCloseTimer);
+      captureRevealAutoCloseTimer = null;
+    }
     els.captureReveal.classList.remove('visible');
     els.captureReveal.innerHTML = '';
     if(captureRevealResolve){
@@ -1797,21 +1805,6 @@
     }
   }
 
-  function positionHuntDropdown(){
-    const input = document.getElementById('huntSetSearch');
-    const dropdown = document.getElementById('huntSetDropdown');
-    // Détache la liste du flux normal et l'attache directement au <body> : ça garantit
-    // qu'aucun conteneur parent (mise en page flex, contexte d'empilement CSS, etc.)
-    // ne puisse la cacher ou la couper visuellement, quel que soit l'appareil.
-    if(dropdown.parentElement !== document.body){
-      document.body.appendChild(dropdown);
-    }
-    const rect = input.getBoundingClientRect();
-    dropdown.style.left = rect.left + 'px';
-    dropdown.style.top = (rect.bottom + 4) + 'px';
-    dropdown.style.width = rect.width + 'px';
-  }
-
   function renderHuntDropdown(query){
     query = (query || '').trim().toLowerCase();
     const items = [{ id: 'all', name: 'Toutes les collections (aléatoire)', special: true }, ...allSets];
@@ -1824,7 +1817,6 @@
         `<div class="combobox-item${i.special ? ' special' : ''}" onclick="selectHuntSet('${i.id}')">${i.name}${i.cardCount ? ` (${i.cardCount.total})` : ''}</div>`
       ).join('');
     }
-    positionHuntDropdown();
     dropdown.classList.add('visible');
   }
 
@@ -1843,20 +1835,10 @@
 
   document.addEventListener('click', (e) => {
     const combo = document.getElementById('huntCombobox');
-    const dropdown = document.getElementById('huntSetDropdown');
-    if(combo && dropdown && !combo.contains(e.target) && !dropdown.contains(e.target)){
-      dropdown.classList.remove('visible');
+    if(combo && !combo.contains(e.target)){
+      const dropdown = document.getElementById('huntSetDropdown');
+      if(dropdown) dropdown.classList.remove('visible');
     }
-  });
-  window.addEventListener('scroll', (e) => {
-    const dropdown = document.getElementById('huntSetDropdown');
-    if(dropdown && dropdown.classList.contains('visible') && !dropdown.contains(e.target)){
-      dropdown.classList.remove('visible');
-    }
-  }, true);
-  window.addEventListener('resize', () => {
-    const dropdown = document.getElementById('huntSetDropdown');
-    if(dropdown && dropdown.classList.contains('visible')) positionHuntDropdown();
   });
 
   async function getSetCardList(setId){
